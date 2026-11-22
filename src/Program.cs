@@ -124,6 +124,49 @@ namespace UpgradeTool
             }
         }
 
+        public static Size? ReadWindowSize()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(ThemeRegPath))
+                {
+                    if (k != null)
+                    {
+                        object w = k.GetValue("WinW");
+                        object h = k.GetValue("WinH");
+                        if (w is int && h is int)
+                        {
+                            int wi = (int)w, hi = (int)h;
+                            if (wi >= 800 && hi >= 600 && wi <= 8000 && hi <= 8000)
+                                return new Size(wi, hi);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return null;
+        }
+
+        public static void SaveWindowSize(int w, int h)
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(ThemeRegPath))
+                {
+                    if (k != null)
+                    {
+                        k.SetValue("WinW", w, RegistryValueKind.DWord);
+                        k.SetValue("WinH", h, RegistryValueKind.DWord);
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
         private static float ChooseScale(string[] args)
         {
             foreach (string a in args)

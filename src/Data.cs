@@ -32,7 +32,7 @@ namespace UpgradeTool
 
         public const string Website = "https://zhcool.xyz";
         public const string RepoUrl = "https://github.com/ZHCOOL520/Windows-Edition-Upgrade";
-        public const string QqMail = "";
+        public const string QqMail = "zhcool520@qq.com";
 
         public const string ArgsNormal =
             "/eula accept /telemetry disable /priority normal /resizerecoverypartition enable";

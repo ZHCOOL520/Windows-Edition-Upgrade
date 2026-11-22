@@ -64,6 +64,20 @@ namespace UpgradeTool
             if (Height > work.Height) ClientSize = new Size(ClientSize.Width, work.Height - Theme.S(24));
             if (MinimumSize.Width > ClientSize.Width) MinimumSize = new Size(ClientSize.Width, MinimumSize.Height);
             if (MinimumSize.Height > ClientSize.Height) MinimumSize = new Size(MinimumSize.Width, ClientSize.Height);
+
+            Size? saved = Program.ReadWindowSize();
+            if (saved.HasValue)
+            {
+                int sw = Math.Min(saved.Value.Width, work.Width - Theme.S(24));
+                int sh = Math.Min(saved.Value.Height, work.Height - Theme.S(24));
+                if (sw >= MinimumSize.Width && sh >= MinimumSize.Height)
+                    ClientSize = new Size(sw, sh);
+            }
+            FormClosing += delegate
+            {
+                if (WindowState == FormWindowState.Normal)
+                    Program.SaveWindowSize(ClientSize.Width, ClientSize.Height);
+            };
             BackColor = Theme.BgTop;
             Font = Theme.Body;
             DoubleBuffered = true;

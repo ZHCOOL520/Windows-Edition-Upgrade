@@ -223,6 +223,7 @@ Windows 11 企业版 LTSC 2024（基于 24H2）已于 2024 年 10 月 1 日正�
 
 - GitHub 仓库：<https://github.com/ZHCOOL520/Windows-Edition-Upgrade>
 - 问题反馈：<https://github.com/ZHCOOL520/Windows-Edition-Upgrade/issues>
+- QQ 邮箱：`zhcool520@qq.com`
 - 如果网络不好打不开 GitHub，可以在 EXE 右上角点「关于」按钮，用里面显示的 QQ 邮箱反馈。
 
 ## 中文版说明
