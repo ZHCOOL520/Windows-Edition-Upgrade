@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -13,7 +14,6 @@ namespace UpgradeTool
         private readonly List<AnimatedCard> sourceCards = new List<AnimatedCard>();
         private readonly List<AnimatedCard> editionCards = new List<AnimatedCard>();
         private AnimatedCard customCard;
-        private Label sourceEmpty;
 
         private void ScanSources(bool reset)
         {
@@ -39,43 +39,33 @@ namespace UpgradeTool
 
         private void RebuildSourceRows()
         {
-            sourceList.SuspendLayout();
-            sourceList.Controls.Clear();
-            foreach (AnimatedCard c in sourceCards) allCards.Remove(c);
+            sourceCard.ClearRows();
             sourceCards.Clear();
-            sourceEmpty = null;
 
             if (sources.Count == 0)
             {
-                sourceEmpty = new Label();
-                sourceEmpty.AutoSize = false;
-                sourceEmpty.Size = new Size(Theme.S(880), Theme.S(40));
-                sourceEmpty.Location = new Point(Theme.S(6), Theme.S(10));
-                sourceEmpty.Font = Theme.Small;
-                sourceEmpty.ForeColor = Theme.Dim;
-                sourceEmpty.BackColor = Theme.BgTop;
-                sourceEmpty.Text = "未找到安装介质。可以把脚本放到安装介质根目录，或选择已挂载的 ISO / 解压后的文件夹。";
-                sourceList.Controls.Add(sourceEmpty);
+                sourceCard.EmptyText = "未找到安装介质。可以把脚本放到安装介质根目录，或选择已挂载的 ISO / 解压后的文件夹。";
+                sourceCard.Finish(0);
+                return;
             }
-            else
+
+            sourceCard.EmptyText = "";
+            int y = 0;
+            for (int i = 0; i < sources.Count; i++)
             {
-                for (int i = 0; i < sources.Count; i++)
-                {
-                    MediaSource m = sources[i];
-                    AnimatedCard c = new AnimatedCard();
-                    c.Text = m.Label;
-                    c.SubText = m.Path;
-                    c.RightText = "可用";
-                    c.Height = Theme.S(62);
-                    c.Tag = m;
-                    c.Click += SourceCardClick;
-                    sourceList.Controls.Add(c);
-                    sourceCards.Add(c);
-                    allCards.Add(c);
-                }
+                MediaSource m = sources[i];
+                AnimatedCard c = new AnimatedCard();
+                c.Text = m.Label;
+                c.SubText = m.Path;
+                c.RightText = "可用";
+                c.Height = Theme.S(56);
+                c.Tag = m;
+                c.Click += SourceCardClick;
+                sourceCard.AddRow(c, y);
+                sourceCards.Add(c);
+                y += c.Height + Theme.S(6);
             }
-            sourceList.ResumeLayout(false);
-            LayoutSourceRows();
+            sourceCard.Finish(y);
         }
 
         private void RefreshSourceSelection()
@@ -86,27 +76,6 @@ namespace UpgradeTool
                 c.Selected = m != null && currentSource != null && m.Path == currentSource.Path;
                 c.Invalidate();
             }
-        }
-
-        private void LayoutSourceRows()
-        {
-            int y = 0;
-            int w = sourceList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4;
-            if (sourceEmpty != null)
-            {
-                sourceEmpty.Width = Math.Max(Theme.S(400), w);
-                sourceEmpty.Left = Theme.S(6);
-                sourceList.PerformLayout();
-                return;
-            }
-            foreach (AnimatedCard c in sourceCards)
-            {
-                c.Left = 0;
-                c.Top = y;
-                c.Width = Math.Max(Theme.S(400), w);
-                y += c.Height + Theme.S(8);
-            }
-            sourceList.PerformLayout();
         }
 
         private void SourceCardClick(object sender, EventArgs e)
@@ -226,18 +195,12 @@ namespace UpgradeTool
 
         private void PopulateEditions()
         {
-            foreach (AnimatedCard c in allCards.ToArray())
-            {
-                if (c.Parent == editionList) allCards.Remove(c);
-            }
-            editionList.SuspendLayout();
-            editionList.Controls.Clear();
+            editionCard.ClearRows();
             editionCards.Clear();
             customCard = null;
-            string lastGroup = null;
-            int y = 0;
-            int w = editionList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4;
 
+            int y = 0;
+            string lastGroup = null;
             foreach (Edition ed in Data.Editions)
             {
                 if (ed.Group != lastGroup)
@@ -246,57 +209,36 @@ namespace UpgradeTool
                     AnimatedCard h = new AnimatedCard();
                     h.IsHeader = true;
                     h.Text = lastGroup;
-                    h.Height = Theme.S(32);
+                    h.Height = Theme.S(30);
                     h.Cursor = Cursors.Default;
-                    h.Left = 0;
-                    h.Top = y;
-                    h.Width = Math.Max(Theme.S(400), w);
-                    editionList.Controls.Add(h);
-                    y += Theme.S(36);
+                    editionCard.AddRow(h, y);
+                    y += Theme.S(34);
                 }
 
                 AnimatedCard c = new AnimatedCard();
                 c.Text = ed.Index + ". " + ed.Name;
                 c.SubText = ed.EditionId;
                 c.RightText = ed.Key;
-                c.Height = Theme.S(50);
+                c.Height = Theme.S(48);
                 c.Tag = ed;
-                c.Left = 0;
-                c.Top = y;
-                c.Width = Math.Max(Theme.S(400), w);
                 c.Click += EditionCardClick;
-                editionList.Controls.Add(c);
+                editionCard.AddRow(c, y);
                 editionCards.Add(c);
-                allCards.Add(c);
-                y += Theme.S(56);
+                y += Theme.S(54);
             }
 
-            y += Theme.S(8);
+            y += Theme.S(6);
             AnimatedCard custom = new AnimatedCard();
             custom.Text = "28. 自定义版本（自己提供预安装密钥）";
             custom.SubText = "适用于列表里没有的版本，点击后填写密钥";
             custom.RightText = "自定义";
-            custom.Height = Theme.S(56);
-            custom.Left = 0;
-            custom.Top = y;
-            custom.Width = Math.Max(Theme.S(400), w);
+            custom.Height = Theme.S(52);
             custom.Click += CustomCardClick;
-            editionList.Controls.Add(custom);
-            allCards.Add(custom);
+            editionCard.AddRow(custom, y);
             customCard = custom;
+            y += custom.Height + Theme.S(6);
 
-            editionList.ResumeLayout(false);
-        }
-
-        private void LayoutEditionRows()
-        {
-            int w = editionList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4;
-            foreach (Control c in editionList.Controls)
-            {
-                c.Left = 0;
-                c.Width = Math.Max(Theme.S(400), w);
-            }
-            editionList.PerformLayout();
+            editionCard.Finish(y);
         }
 
         private void EditionCardClick(object sender, EventArgs e)
@@ -331,7 +273,7 @@ namespace UpgradeTool
             {
                 Edition ed = c.Tag as Edition;
                 c.Selected = ed != null && currentEdition != null && ed.Index == currentEdition.Index;
-                if (c.Selected) editionList.ScrollControlIntoView(c);
+                if (c.Selected) editionCard.EnsureVisible(c);
                 c.Invalidate();
             }
             if (customCard != null)
@@ -364,28 +306,62 @@ namespace UpgradeTool
             if (targetCard != null) targetCard.Invalidate();
         }
 
+        private void PaintLogCard(object sender, PaintEventArgs e)
+        {
+            Panel p = (Panel)sender;
+            Graphics g = e.Graphics;
+            Theme.EnableSmooth(g);
+            Rectangle r = new Rectangle(0, 0, p.Width - 1, p.Height - 1);
+            Theme.FillRound(g, r, Theme.S(8), Theme.Sunken);
+            Theme.StrokeRound(g, r, Theme.S(8), Theme.CardStroke, 1f);
+            TextRenderer.DrawText(g, "运行日志", Theme.Caption, new Point(Theme.S(16), Theme.S(11)), Theme.Dim,
+                TextFormatFlags.NoPrefix);
+
+            if (logLines.Count == 0)
+            {
+                TextRenderer.DrawText(g, "选择执行方式后点「开始执行」，过程信息会记录在这里。",
+                    Theme.MonoSmall, new Point(Theme.S(16), Theme.S(36)), Theme.Dim, TextFormatFlags.NoPrefix);
+                return;
+            }
+
+            int lineH = Theme.S(17);
+            int maxLines = Math.Max(1, (r.Height - Theme.S(46)) / lineH);
+            int shown = Math.Min(maxLines, logLines.Count);
+            int startY = Theme.S(36);
+            for (int i = 0; i < shown; i++)
+            {
+                string line = logLines[logLines.Count - shown + i];
+                bool newest = i == shown - 1;
+                TextRenderer.DrawText(g, line, Theme.MonoSmall,
+                    new Rectangle(Theme.S(16), startY + i * lineH, r.Width - Theme.S(32), lineH),
+                    newest ? Theme.Text : Theme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            }
+        }
+
         private void PaintTargetCard(object sender, PaintEventArgs e)
         {
             Panel p = (Panel)sender;
             Graphics g = e.Graphics;
             Theme.EnableSmooth(g);
-            Rectangle r = new Rectangle(0, 0, p.Width - 1, p.Height - Theme.S(3));
-            Theme.FillRound(g, r, Theme.S(10), Theme.Card);
-            Theme.StrokeRound(g, r, Theme.S(10), Theme.Line, 1f);
+            Rectangle r = new Rectangle(0, 0, p.Width - 1, p.Height - 1);
+            Theme.FillRound(g, r, Theme.S(8), Theme.AccentSoft);
+            Theme.StrokeRound(g, r, Theme.S(8), Color.FromArgb(Theme.Light ? 90 : 120, Theme.Accent), 1f);
 
-            TextRenderer.DrawText(g, "当前目标", Theme.Small, new Point(Theme.S(18), Theme.S(12)), Theme.Dim,
-                TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, "当前目标", Theme.Caption,
+                new Point(Theme.S(16), Theme.S(8)), Theme.Muted, TextFormatFlags.NoPrefix);
             string name = currentEdition == null ? "尚未选择版本" : currentEdition.Name;
-            TextRenderer.DrawText(g, name, Theme.H2, new Point(Theme.S(18), Theme.S(32)), Theme.Text,
-                TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, name, Theme.H2,
+                new Point(Theme.S(16), Theme.S(24)), Theme.Text, TextFormatFlags.NoPrefix);
 
             if (currentEdition != null)
             {
                 TextRenderer.DrawText(g, "EditionID  " +
                     (string.IsNullOrEmpty(currentEdition.EditionId) ? "未指定（强制升级不可用）" : currentEdition.EditionId),
-                    Theme.MonoSmall, new Point(Theme.S(18), Theme.S(55)), Theme.Muted, TextFormatFlags.NoPrefix);
+                    Theme.MonoSmall, new Point(Theme.S(16), Theme.S(47)), Theme.Muted, TextFormatFlags.NoPrefix);
                 TextRenderer.DrawText(g, currentEdition.Key, Theme.Mono,
-                    new Rectangle(r.Right - Theme.S(330), 0, Theme.S(312), r.Height), Theme.Accent2,
+                    new Rectangle(r.Right - Theme.S(330), 0, Theme.S(314), r.Height), Theme.Accent,
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
             }
         }
@@ -501,6 +477,73 @@ namespace UpgradeTool
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return false;
             }
+        }
+
+        private void ExportLog()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine(Data.AppName + " " + Data.Version + "  运行日志");
+            sb.AppendLine("导出时间：" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("系统：" + OsDescription());
+            sb.AppendLine("安装源：" + (currentSource == null ? "未选择" : currentSource.Path));
+            sb.AppendLine("目标版本：" + (currentEdition == null
+                ? "未选择"
+                : currentEdition.Name + "（" +
+                  (string.IsNullOrEmpty(currentEdition.EditionId) ? "EditionID 未指定" : currentEdition.EditionId) + "）"));
+            sb.AppendLine("执行方式：" + ModeName(currentMode));
+            sb.AppendLine(new string('-', 48));
+            if (logLines.Count == 0) sb.AppendLine("（暂无运行日志）");
+            else
+            {
+                foreach (string line in logLines) sb.AppendLine(line);
+            }
+
+            using (SaveFileDialog dlg = new SaveFileDialog())
+            {
+                dlg.Title = "导出运行日志";
+                dlg.Filter = "文本文件|*.txt|所有文件|*.*";
+                dlg.FileName = "无损跨版本升级Windows-日志-" +
+                               DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
+                if (dlg.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true));
+                    Log("日志已导出：" + dlg.FileName);
+                    MessageBox.Show(this, "日志已保存：\r\n" + dlg.FileName, Data.AppName,
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    Log("导出日志失败：" + ex.Message);
+                    MessageBox.Show(this, "导出失败：\r\n" + ex.Message, Data.AppName,
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private static string OsDescription()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (k != null)
+                    {
+                        string name = k.GetValue("ProductName") as string;
+                        string ver = k.GetValue("DisplayVersion") as string;
+                        string build = k.GetValue("CurrentBuild") as string;
+                        object ubr = k.GetValue("UBR");
+                        string arch = Environment.Is64BitOperatingSystem ? "x64" : "x86";
+                        return (name ?? "Windows") + " " + (ver ?? "") + " Build " + (build ?? "?") +
+                               (ubr != null ? "." + ubr : "") + " " + arch;
+                    }
+                }
+            }
+            catch
+            {
+            }
+            return Environment.OSVersion.VersionString;
         }
 
         private void Log(string text)

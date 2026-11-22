@@ -29,6 +29,12 @@ namespace UpgradeTool
                 return;
             }
 
+            if (args.Length > 0 && args[0].StartsWith("--shot=", StringComparison.OrdinalIgnoreCase))
+            {
+                RunShot(args);
+                return;
+            }
+
             if (!IsAdmin())
             {
                 RelaunchElevated();
@@ -57,6 +63,61 @@ namespace UpgradeTool
             sb.AppendLine("sources=" + found.Count);
             foreach (MediaSource m in found) sb.AppendLine("src|" + m.Path);
             File.WriteAllText(report, sb.ToString(), Encoding.UTF8);
+        }
+
+        private static void RunShot(string[] args)
+        {
+            string path = null;
+            int target = 0;
+            int width = 0;
+            int height = 0;
+            foreach (string a in args)
+            {
+                if (a.StartsWith("--shot=", StringComparison.OrdinalIgnoreCase))
+                    path = a.Substring(7);
+                else if (a.StartsWith("--step=", StringComparison.OrdinalIgnoreCase))
+                    int.TryParse(a.Substring(7), out target);
+                else if (a.StartsWith("--size=", StringComparison.OrdinalIgnoreCase))
+                {
+                    string[] parts = a.Substring(7).Split('x');
+                    if (parts.Length == 2)
+                    {
+                        int.TryParse(parts[0], out width);
+                        int.TryParse(parts[1], out height);
+                    }
+                }
+            }
+            if (string.IsNullOrEmpty(path)) return;
+
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Theme.Init(ChooseLight(args), ChooseScale(args));
+            try
+            {
+                using (MainForm f = new MainForm())
+                {
+                    f.Show();
+                    if (width > 0 && height > 0) f.ClientSize = new Size(width, height);
+                    for (int i = 0; i < 3; i++) Application.DoEvents();
+                    f.ReflectStep(target);
+                    DateTime until = DateTime.Now.AddMilliseconds(700);
+                    while (DateTime.Now < until)
+                    {
+                        Application.DoEvents();
+                        System.Threading.Thread.Sleep(12);
+                    }
+                    using (Bitmap bmp = new Bitmap(f.Width, f.Height))
+                    {
+                        f.DrawToBitmap(bmp, new Rectangle(0, 0, f.Width, f.Height));
+                        bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+                    }
+                    f.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(path + ".err.txt", ex.ToString(), Encoding.UTF8);
+            }
         }
 
         private static void RunUiTest()

@@ -1,0 +1,18 @@
+# ===== 编译产物（依赖可用 dotnet restore 从微软 NuGet 重新获取）=====
+# 覆盖 src/bin、src/obj 以及任何子项目下的同名目录
+[Bb]in/
+[Oo]bj/
+
+# ===== 发布产物（单文件 EXE 约 92 MB）=====
+# 通过 GitHub Releases 作为附件分发，不提交到仓库
+publish/
+
+# ===== 可执行文件与调试符号 =====
+*.exe
+*.pdb
+
+# ===== IDE 与用户级文件 =====
+.vs/
+.idea/
+*.user
+*.suo

@@ -9,8 +9,8 @@ namespace UpgradeTool
 {
     internal partial class MainForm : Form
     {
-        private const int WinW = 1000;
-        private const int WinH = 680;
+        private const int WinW = 1080;
+        private const int WinH = 720;
 
         [DllImport("user32.dll")]
         private static extern bool ReleaseCapture();
@@ -18,31 +18,41 @@ namespace UpgradeTool
         private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
 
         private int step;
-        private GradientPanel stepSource, stepEdition, stepMode;
-        private Panel sourceList, editionList;
+        private NavPanel nav;
+        private NavItem navSource, navEdition, navMode, navAbout;
+        private ThemeSwitch themeSwitch;
+        private PagePanel pageSource, pageEdition, pageMode;
+        private ScrollCard sourceCard, editionCard;
+        private Panel targetCard, logCard;
         private Label lblSourceHint, lblEditionHint;
         private UButton btnRescan, btnFolder, btnIso;
-        private UButton btnBack, btnNext, btnStart;
-        private Label lblFooter;
-        private Panel logCard;
-        private Label lblSourceTitle, lblSourceDesc, lblEditionTitle, lblModeTitle;
-        private Panel targetCard;
-        private readonly List<string> logLines = new List<string>();
-        private WindowButton btnClose, btnMin, btnAbout;
-        private ThemeButton btnTheme;
+        private UButton btnBack, btnNext, btnStart, btnExportLog;
+        private WindowButton btnClose, btnMin;
 
+        private readonly List<string> logLines = new List<string>();
         private readonly List<MediaSource> sources = new List<MediaSource>();
-        private readonly List<AnimatedCard> allCards = new List<AnimatedCard>();
         private readonly List<ModeCard> modeCards = new List<ModeCard>();
         private MediaSource currentSource;
         private Edition currentEdition;
         private RunMode currentMode = RunMode.Pkey;
         private Timer anim;
         private readonly Spinner spinner = new Spinner();
-        private Panel slidePanel;
-        private int slideTicks;
-        private float fadeTicks;
         private bool busy;
+
+        private string footerText = "";
+        private Color footerColor = Theme.Muted;
+        private int footerLineY;
+
+        private int contentLeft;
+        private Control slidePage;
+        private int slideTicks;
+        private float navIndicatorY;
+        private float navIndicatorTarget;
+        private bool navIndicatorInit;
+
+        private Palette palFrom, palTo;
+        private float paletteT = 1f;
+        private float fadeTicks;
 
         public MainForm()
         {
@@ -56,9 +66,10 @@ namespace UpgradeTool
             {
             }
             FormBorderStyle = FormBorderStyle.None;
+            AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(Theme.S(WinW), Theme.S(WinH));
-            MinimumSize = new Size(Theme.S(990), Theme.S(676));
+            MinimumSize = new Size(Theme.S(820), Theme.S(560));
             Rectangle work = Screen.PrimaryScreen.WorkingArea;
             if (Width > work.Width) ClientSize = new Size(work.Width - Theme.S(24), ClientSize.Height);
             if (Height > work.Height) ClientSize = new Size(ClientSize.Width, work.Height - Theme.S(24));
@@ -84,16 +95,7 @@ namespace UpgradeTool
             KeyPreview = true;
             Opacity = 0;
 
-            BuildHeader();
-            BuildFooter();
-            BuildSteps();
-            Controls.Add(stepSource);
-            Controls.Add(stepEdition);
-            Controls.Add(stepMode);
-            Controls.Add(lblFooter);
-            Controls.Add(btnBack);
-            Controls.Add(btnNext);
-            Controls.Add(btnStart);
+            BuildUi();
 
             ResumeLayout(false);
 
@@ -118,46 +120,204 @@ namespace UpgradeTool
 
         private void UpdateRegion()
         {
-            using (GraphicsPath p = Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.S(14)))
+            using (GraphicsPath p = Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.S(8)))
             {
                 Region = new Region(p);
             }
         }
 
-        private void ApplyTheme()
+        private void BuildUi()
         {
-            BackColor = Theme.BgTop;
-            stepSource.BackColor = Theme.BgTop;
-            stepEdition.BackColor = Theme.BgTop;
-            stepMode.BackColor = Theme.BgTop;
-            sourceList.BackColor = Theme.BgTop;
-            editionList.BackColor = Theme.BgTop;
-            logCard.BackColor = Theme.BgTop;
-            targetCard.BackColor = Theme.BgTop;
-            lblSourceTitle.ForeColor = Theme.Text;
-            lblEditionTitle.ForeColor = Theme.Text;
-            lblModeTitle.ForeColor = Theme.Text;
-            lblSourceDesc.ForeColor = Theme.Muted;
-            lblEditionHint.ForeColor = Theme.Muted;
+            nav = new NavPanel();
+            nav.MouseDown += delegate(object sender, MouseEventArgs e)
+            {
+                if (e.Button == MouseButtons.Left)
+                {
+                    ReleaseCapture();
+                    SendMessage(Handle, 0xA1, 0x2, 0);
+                }
+            };
+            try
+            {
+                if (Icon != null) nav.AppIcon = Icon.ToBitmap();
+            }
+            catch
+            {
+            }
+            Controls.Add(nav);
+
+            navSource = MakeNav("安装源", GlyphKind.Disc, 0);
+            navEdition = MakeNav("目标版本", GlyphKind.Grid, 1);
+            navMode = MakeNav("执行方式", GlyphKind.Play, 2);
+
+            navAbout = new NavItem();
+            navAbout.Text = "关于";
+            navAbout.Glyph = GlyphKind.Info;
+            navAbout.Click += delegate { ShowAbout(); };
+            nav.Controls.Add(navAbout);
+
+            themeSwitch = new ThemeSwitch();
+            themeSwitch.On = !Theme.Light;
+            themeSwitch.Knob = themeSwitch.On ? 1f : 0f;
+            themeSwitch.Click += delegate { ToggleTheme(); };
+            nav.Controls.Add(themeSwitch);
+
+            pageSource = new PagePanel();
+            pageSource.PageTitle = "安装源";
+            pageSource.PageSubtitle = "需要包含 setup.exe 和 sources 文件夹的目录，也可以直接选择 ISO 镜像自动挂载。";
+            Controls.Add(pageSource);
+
+            pageEdition = new PagePanel();
+            pageEdition.PageTitle = "目标版本";
+            pageEdition.PageSubtitle = "常规版本可以直接升级；LTSC 和 Server 需要对应的独立安装介质。";
+            Controls.Add(pageEdition);
+
+            pageMode = new PagePanel();
+            pageMode.PageTitle = "执行方式";
+            pageMode.PageSubtitle = "先确认目标版本，再选择一种执行方式并开始。";
+            Controls.Add(pageMode);
+
+            BuildSourcePage();
+            BuildEditionPage();
+            BuildModePage();
+            BuildCommandBar();
+
+            Controls.Add(pageSource);
+            Controls.Add(pageEdition);
+            Controls.Add(pageMode);
+            Controls.Add(btnBack);
+            Controls.Add(btnNext);
+            Controls.Add(btnStart);
+            Controls.Add(btnMin);
+            Controls.Add(btnClose);
+        }
+
+        private NavItem MakeNav(string text, GlyphKind glyph, int target)
+        {
+            NavItem item = new NavItem();
+            item.Text = text;
+            item.Glyph = glyph;
+            item.Click += delegate { GoStep(target); };
+            nav.Controls.Add(item);
+            return item;
+        }
+
+        private void BuildSourcePage()
+        {
+            sourceCard = new ScrollCard();
+            sourceCard.EmptyText = "未找到安装介质。可以把脚本放到安装介质根目录，或选择已挂载的 ISO / 解压后的文件夹。";
+            pageSource.Controls.Add(sourceCard);
+
+            btnRescan = new UButton("重新扫描");
+            btnRescan.Click += delegate { ScanSources(true); };
+            pageSource.Controls.Add(btnRescan);
+
+            btnFolder = new UButton("选择文件夹");
+            btnFolder.Click += delegate { PickFolder(); };
+            pageSource.Controls.Add(btnFolder);
+
+            btnIso = new UButton("选择 ISO");
+            btnIso.Click += delegate { PickIso(); };
+            pageSource.Controls.Add(btnIso);
+
+            lblSourceHint = new Label();
+            lblSourceHint.AutoSize = false;
+            lblSourceHint.Font = Theme.Small;
             lblSourceHint.ForeColor = Theme.Dim;
+            lblSourceHint.BackColor = Theme.BgTop;
+            lblSourceHint.Text = "";
+            pageSource.Controls.Add(lblSourceHint);
+        }
 
-            DarkPanel sp = sourceList as DarkPanel;
-            if (sp != null) sp.RefreshTheme();
-            DarkPanel ep = editionList as DarkPanel;
-            if (ep != null) ep.RefreshTheme();
+        private void BuildEditionPage()
+        {
+            editionCard = new ScrollCard();
+            pageEdition.Controls.Add(editionCard);
 
-            RefreshSourceSelection();
-            PopulateEditions();
-            HighlightEdition();
-            UpdateFooter();
-            Invalidate(true);
+            lblEditionHint = new Label();
+            lblEditionHint.AutoSize = false;
+            lblEditionHint.Font = Theme.Small;
+            lblEditionHint.ForeColor = Theme.Muted;
+            lblEditionHint.BackColor = Theme.BgTop;
+            lblEditionHint.Text = "";
+            pageEdition.Controls.Add(lblEditionHint);
+        }
+
+        private void BuildModePage()
+        {
+            targetCard = new Panel();
+            targetCard.BackColor = Theme.BgTop;
+            targetCard.Paint += PaintTargetCard;
+            pageMode.Controls.Add(targetCard);
+
+            string[] titles = { "仅更换密钥", "普通升级", "指定版本升级", "强制升级" };
+            string[] descs =
+            {
+                "用 slmgr 安装所选密钥，只切换版本，不做就地升级。",
+                "不指定版本，由安装程序自行判断。",
+                "就地升级到所选版本，自动传入密钥。",
+                "改写注册表伪装版本，可跨过升级限制，需二次确认。"
+            };
+            string[] keys = { "K", "S", "U", "F" };
+            RunMode[] modes = { RunMode.KeyOnly, RunMode.Normal, RunMode.Pkey, RunMode.Force };
+            GlyphKind[] glyphs = { GlyphKind.Key, GlyphKind.ArrowUp, GlyphKind.Target, GlyphKind.Warning };
+
+            for (int i = 0; i < 4; i++)
+            {
+                ModeCard c = new ModeCard();
+                c.Text = titles[i];
+                c.Description = descs[i];
+                c.Shortcut = keys[i];
+                c.Mode = modes[i];
+                c.Glyph = glyphs[i];
+                c.Click += ModeCardClick;
+                pageMode.Controls.Add(c);
+                modeCards.Add(c);
+            }
+
+            logCard = new Panel();
+            logCard.BackColor = Theme.BgTop;
+            logCard.Paint += PaintLogCard;
+            pageMode.Controls.Add(logCard);
+
+            btnExportLog = new UButton("导出日志");
+            btnExportLog.Subtle = true;
+            btnExportLog.Click += delegate { ExportLog(); };
+            logCard.Controls.Add(btnExportLog);
+        }
+
+        private void BuildCommandBar()
+        {
+            btnBack = new UButton("上一步");
+            btnBack.Click += delegate { GoStep(step - 1); };
+
+            btnNext = new UButton("下一步");
+            btnNext.Primary = true;
+            btnNext.Click += delegate { GoStep(step + 1); };
+
+            btnStart = new UButton("开始执行");
+            btnStart.Primary = true;
+            btnStart.Click += delegate { StartRun(); };
+
+            btnClose = new WindowButton();
+            btnClose.Kind = GlyphKind.Close;
+            btnClose.IsClose = true;
+            btnClose.Click += delegate { Close(); };
+
+            btnMin = new WindowButton();
+            btnMin.Kind = GlyphKind.Minimize;
+            btnMin.Click += delegate { WindowState = FormWindowState.Minimized; };
         }
 
         private void ToggleTheme()
         {
-            Theme.Init(!Theme.Light, Theme.Scale);
-            Program.SaveTheme(Theme.Light);
-            ApplyTheme();
+            bool light = !Theme.Light;
+            palFrom = Theme.Capture();
+            palTo = Theme.Target(light);
+            Theme.Light = light;
+            paletteT = 0f;
+            themeSwitch.On = !light;
+            Program.SaveTheme(light);
         }
 
         private void ShowAbout()
@@ -168,10 +328,35 @@ namespace UpgradeTool
             }
         }
 
+        private void ApplyThemeSurfaces()
+        {
+            BackColor = Theme.BgTop;
+            pageSource.BackColor = Theme.BgTop;
+            pageEdition.BackColor = Theme.BgTop;
+            pageMode.BackColor = Theme.BgTop;
+            sourceCard.BackColor = Theme.BgTop;
+            editionCard.BackColor = Theme.BgTop;
+            logCard.BackColor = Theme.BgTop;
+            targetCard.BackColor = Theme.BgTop;
+            lblSourceHint.BackColor = Theme.BgTop;
+            lblEditionHint.BackColor = Theme.BgTop;
+            lblSourceHint.ForeColor = Theme.Dim;
+            lblEditionHint.ForeColor = Theme.Muted;
+            nav.BackColor = Theme.BgTop;
+            InvalidateAll(this);
+            nav.Invalidate();
+        }
+
+        private void InvalidateAll(Control c)
+        {
+            c.Invalidate();
+            foreach (Control child in c.Controls) InvalidateAll(child);
+        }
+
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (stepSource == null) return;
+            if (nav == null) return;
             LayoutAll();
             UpdateRegion();
             Invalidate();
@@ -179,53 +364,104 @@ namespace UpgradeTool
 
         private void LayoutAll()
         {
+            if (nav == null) return;
             int W = ClientSize.Width;
             int H = ClientSize.Height;
-            int contentW = W - Theme.S(56);
-            int contentTop = Theme.S(126);
-            int footerY = H - Theme.S(78);
-            int contentH = footerY - Theme.S(14) - contentTop;
-            if (contentH < Theme.S(300)) contentH = Theme.S(300);
 
-            stepSource.SetBounds(Theme.S(28), contentTop, contentW, contentH);
-            stepEdition.SetBounds(Theme.S(28), contentTop, contentW, contentH);
-            stepMode.SetBounds(Theme.S(28), contentTop, contentW, contentH);
+            bool compact = W < Theme.S(940);
+            int navW = compact ? Theme.S(64) : Theme.S(232);
+            nav.SetBounds(Theme.S(5), 0, navW, H);
+            nav.Compact = compact;
 
-            lblSourceTitle.Width = contentW;
-            lblSourceDesc.Width = contentW;
-            sourceList.SetBounds(0, Theme.S(72), contentW, contentH - Theme.S(72) - Theme.S(68));
-            int by = contentH - Theme.S(56);
-            btnRescan.SetBounds(0, by, Theme.S(132), Theme.S(38));
-            btnFolder.SetBounds(Theme.S(144), by, Theme.S(132), Theme.S(38));
-            btnIso.SetBounds(Theme.S(288), by, Theme.S(132), Theme.S(38));
-            lblSourceHint.SetBounds(Theme.S(436), by + Theme.S(5), Math.Max(Theme.S(120), contentW - Theme.S(436)), Theme.S(26));
+            int itemH = Theme.S(40);
+            int itemX = compact ? (navW - Theme.S(40)) / 2 : Theme.S(11);
+            int itemW = compact ? Theme.S(40) : navW - Theme.S(22);
+            int itemY = Theme.S(86);
+            navSource.SetBounds(itemX, itemY, itemW, itemH);
+            navEdition.SetBounds(itemX, itemY + Theme.S(44), itemW, itemH);
+            navMode.SetBounds(itemX, itemY + Theme.S(88), itemW, itemH);
+            navSource.Compact = compact;
+            navEdition.Compact = compact;
+            navMode.Compact = compact;
+            navAbout.Compact = compact;
+            navAbout.SetBounds(itemX, H - Theme.S(96), itemW, itemH);
 
-            lblEditionTitle.Width = contentW;
-            lblEditionHint.Width = contentW;
-            editionList.SetBounds(0, Theme.S(68), contentW, contentH - Theme.S(68));
+            themeSwitch.Compact = compact;
+            themeSwitch.SetBounds(compact ? itemX : Theme.S(12), H - Theme.S(148),
+                compact ? Theme.S(40) : navW - Theme.S(26), Theme.S(32));
 
-            lblModeTitle.Width = contentW;
-            targetCard.SetBounds(0, Theme.S(44), contentW, Theme.S(80));
-            int gap = Theme.S(24);
-            int cardW = (contentW - gap) / 2;
+            int cbW = Theme.S(46);
+            int cbH = Theme.S(40);
+            btnClose.SetBounds(W - cbW, 0, cbW, cbH);
+            btnMin.SetBounds(W - cbW * 2, 0, cbW, cbH);
+
+            contentLeft = navW + Theme.S(28);
+            int contentW = Math.Max(Theme.S(380), W - contentLeft - Theme.S(28));
+            int top = Theme.S(60);
+            footerLineY = H - Theme.S(72);
+            int pageH = Math.Max(Theme.S(300), footerLineY - Theme.S(10) - top);
+
+            pageSource.AutoScroll = false;
+            pageEdition.AutoScroll = false;
+            pageMode.AutoScroll = false;
+            int w = contentW;
+
+            pageSource.SetBounds(contentLeft, top, contentW, pageH);
+            pageEdition.SetBounds(contentLeft, top, contentW, pageH);
+            pageMode.SetBounds(contentLeft, top, contentW, pageH);
+            if (slidePage != null) slidePage.Left = contentLeft;
+
+            sourceCard.SetBounds(0, Theme.S(76), w, Math.Max(Theme.S(100), pageH - Theme.S(76) - Theme.S(56)));
+            int by = pageH - Theme.S(38);
+            btnRescan.SetBounds(0, by, Theme.S(120), Theme.S(34));
+            btnFolder.SetBounds(Theme.S(130), by, Theme.S(120), Theme.S(34));
+            btnIso.SetBounds(Theme.S(260), by, Theme.S(120), Theme.S(34));
+            lblSourceHint.SetBounds(Theme.S(394), by + Theme.S(7),
+                Math.Max(Theme.S(120), w - Theme.S(400)), Theme.S(22));
+
+            editionCard.SetBounds(0, Theme.S(76), w, Math.Max(Theme.S(100), pageH - Theme.S(76) - Theme.S(34)));
+            lblEditionHint.SetBounds(0, pageH - Theme.S(26), w, Theme.S(20));
+
+            targetCard.SetBounds(0, Theme.S(76), w, Theme.S(70));
+            int gap = Theme.S(12);
+            int cardW = (w - gap) / 2;
+            int tileY = Theme.S(152);
+            int tileH = Theme.S(84);
             for (int i = 0; i < modeCards.Count; i++)
             {
-                modeCards[i].SetBounds((i % 2) * (cardW + gap), Theme.S(142) + (i / 2) * Theme.S(100),
-                    cardW, Theme.S(92));
+                modeCards[i].SetBounds((i % 2) * (cardW + gap),
+                    tileY + (i / 2) * (tileH + Theme.S(8)), cardW, tileH);
             }
-            logCard.SetBounds(0, Theme.S(352), contentW, Math.Max(Theme.S(84), contentH - Theme.S(356)));
+            int logY = tileY + 2 * tileH + Theme.S(16);
+            logCard.SetBounds(0, logY, w, Math.Max(Theme.S(80), pageH - logY));
+            btnExportLog.SetBounds(logCard.Width - Theme.S(100), Theme.S(10), Theme.S(88), Theme.S(28));
 
-            lblFooter.SetBounds(Theme.S(28), H - Theme.S(64),
-                Math.Max(Theme.S(200), W - Theme.S(56) - Theme.S(420)), Theme.S(24));
-            int bw = Theme.S(154);
-            int bx = W - Theme.S(28) - bw;
-            btnStart.SetBounds(bx, footerY, bw, Theme.S(40));
-            btnNext.SetBounds(bx, footerY, bw, Theme.S(40));
-            btnBack.SetBounds(bx - Theme.S(126), footerY, Theme.S(112), Theme.S(40));
-            btnAbout.Location = new Point(W - Theme.S(156), Theme.S(14));
-            btnTheme.Location = new Point(W - Theme.S(120), Theme.S(14));
-            btnMin.Location = new Point(W - Theme.S(84), Theme.S(14));
-            btnClose.Location = new Point(W - Theme.S(48), Theme.S(14));
+            int bh = Theme.S(36);
+            int bw = Theme.S(140);
+            int fy = footerLineY + (H - footerLineY - bh) / 2;
+            btnStart.SetBounds(W - Theme.S(28) - bw, fy, bw, bh);
+            btnNext.SetBounds(W - Theme.S(28) - bw, fy, bw, bh);
+            btnBack.SetBounds(W - Theme.S(28) - bw - Theme.S(12) - Theme.S(112), fy, Theme.S(112), bh);
+
+            if (!navIndicatorInit)
+            {
+                navIndicatorTarget = NavTop(SelectedNav());
+                navIndicatorY = navIndicatorTarget;
+                nav.IndicatorY = navIndicatorY;
+                navIndicatorInit = true;
+            }
+        }
+
+        private NavItem SelectedNav()
+        {
+            if (step == 0) return navSource;
+            if (step == 1) return navEdition;
+            return navMode;
+        }
+
+        private float NavTop(NavItem item)
+        {
+            return item.Top + (item.Height - Theme.S(16)) / 2f;
         }
 
         private int resizeEdge;
@@ -254,232 +490,6 @@ namespace UpgradeTool
             return Cursors.Default;
         }
 
-
-        private void BuildHeader()
-        {
-            btnClose = new WindowButton();
-            btnClose.IsClose = true;
-            btnClose.Location = new Point(Theme.S(WinW) - Theme.S(48), Theme.S(14));
-            btnClose.Click += delegate { Close(); };
-            Controls.Add(btnClose);
-
-            btnMin = new WindowButton();
-            btnMin.Location = new Point(Theme.S(WinW) - Theme.S(84), Theme.S(14));
-            btnMin.Click += delegate { WindowState = FormWindowState.Minimized; };
-            Controls.Add(btnMin);
-
-            btnTheme = new ThemeButton();
-            btnTheme.Location = new Point(Theme.S(WinW) - Theme.S(120), Theme.S(14));
-            btnTheme.Click += delegate { ToggleTheme(); };
-            Controls.Add(btnTheme);
-
-            btnAbout = new WindowButton();
-            btnAbout.IsAbout = true;
-            btnAbout.Location = new Point(Theme.S(WinW) - Theme.S(156), Theme.S(14));
-            btnAbout.Click += delegate { ShowAbout(); };
-            Controls.Add(btnAbout);
-        }
-
-        private void BuildFooter()
-        {
-            lblFooter = new Label();
-            lblFooter.AutoSize = false;
-            lblFooter.Location = new Point(28, 608);
-            lblFooter.Size = new Size(600, 22);
-            lblFooter.Font = Theme.Small;
-            lblFooter.ForeColor = Theme.Muted;
-            lblFooter.BackColor = Color.Transparent;
-
-            btnBack = new UButton("上一步");
-            btnBack.Location = new Point(672, 600);
-            btnBack.Size = new Size(112, 40);
-            btnBack.Click += delegate { GoStep(step - 1); };
-
-            btnNext = new UButton("下一步");
-            btnNext.Primary = true;
-            btnNext.Location = new Point(798, 600);
-            btnNext.Size = new Size(154, 40);
-            btnNext.Click += delegate { GoStep(step + 1); };
-
-            btnStart = new UButton("开始执行");
-            btnStart.Primary = true;
-            btnStart.Location = new Point(798, 600);
-            btnStart.Size = new Size(154, 40);
-            btnStart.Click += delegate { StartRun(); };
-        }
-
-        private void BuildSteps()
-        {
-            stepSource = new GradientPanel();
-            stepSource.Location = new Point(28, 126);
-            stepSource.Size = new Size(924, 460);
-            stepSource.BackColor = Theme.BgTop;
-
-            lblSourceTitle = SectionTitle("选择安装介质", stepSource);
-            lblSourceDesc = new Label();
-            lblSourceDesc.AutoSize = false;
-            lblSourceDesc.Location = new Point(0, Theme.S(38));
-            lblSourceDesc.Size = new Size(Theme.S(924), Theme.S(20));
-            lblSourceDesc.Font = Theme.Small;
-            lblSourceDesc.ForeColor = Theme.Muted;
-            lblSourceDesc.BackColor = Color.Transparent;
-            lblSourceDesc.Text = "需要包含 setup.exe 和 sources 文件夹的目录，或者直接选择 ISO 镜像自动挂载。";
-            stepSource.Controls.Add(lblSourceDesc);
-
-            sourceList = new DarkPanel();
-            sourceList.Location = new Point(0, 72);
-            sourceList.Size = new Size(924, 296);
-            sourceList.AutoScroll = true;
-            sourceList.BackColor = Theme.BgTop;
-            sourceList.Resize += delegate { LayoutSourceRows(); };
-            stepSource.Controls.Add(sourceList);
-
-            btnRescan = new UButton("重新扫描");
-            btnRescan.Location = new Point(0, 384);
-            btnRescan.Size = new Size(132, 38);
-            btnRescan.Click += delegate { ScanSources(true); };
-            stepSource.Controls.Add(btnRescan);
-
-            btnFolder = new UButton("选择文件夹");
-            btnFolder.Location = new Point(144, 384);
-            btnFolder.Size = new Size(132, 38);
-            btnFolder.Click += delegate { PickFolder(); };
-            stepSource.Controls.Add(btnFolder);
-
-            btnIso = new UButton("选择 ISO");
-            btnIso.Location = new Point(288, 384);
-            btnIso.Size = new Size(132, 38);
-            btnIso.Click += delegate { PickIso(); };
-            stepSource.Controls.Add(btnIso);
-
-            lblSourceHint = new Label();
-            lblSourceHint.AutoSize = false;
-            lblSourceHint.Location = new Point(436, 390);
-            lblSourceHint.Size = new Size(488, 26);
-            lblSourceHint.Font = Theme.Small;
-            lblSourceHint.ForeColor = Theme.Dim;
-            lblSourceHint.BackColor = Color.Transparent;
-            lblSourceHint.Text = "";
-            stepSource.Controls.Add(lblSourceHint);
-
-            stepEdition = new GradientPanel();
-            stepEdition.Location = new Point(28, 126);
-            stepEdition.Size = new Size(924, 460);
-            stepEdition.BackColor = Theme.BgTop;
-            lblEditionTitle = SectionTitle("选择目标版本", stepEdition);
-
-            lblEditionHint = new Label();
-            lblEditionHint.AutoSize = false;
-            lblEditionHint.Location = new Point(0, Theme.S(38));
-            lblEditionHint.Size = new Size(Theme.S(924), Theme.S(20));
-            lblEditionHint.Font = Theme.Small;
-            lblEditionHint.ForeColor = Theme.Muted;
-            lblEditionHint.BackColor = Color.Transparent;
-            lblEditionHint.Text = "常规版本可以直接升级；LTSC 和 Server 需要对应的独立安装介质。";
-            stepEdition.Controls.Add(lblEditionHint);
-
-            editionList = new DarkPanel();
-            editionList.Location = new Point(0, 68);
-            editionList.Size = new Size(924, 364);
-            editionList.AutoScroll = true;
-            editionList.BackColor = Theme.BgTop;
-            editionList.Resize += delegate { LayoutEditionRows(); };
-            stepEdition.Controls.Add(editionList);
-
-            stepMode = new GradientPanel();
-            stepMode.Location = new Point(28, 126);
-            stepMode.Size = new Size(924, 460);
-            stepMode.BackColor = Theme.BgTop;
-            lblModeTitle = SectionTitle("选择执行方式", stepMode);
-
-            targetCard = new Panel();
-            targetCard.Location = new Point(0, 44);
-            targetCard.Size = new Size(924, 80);
-            targetCard.BackColor = Theme.BgTop;
-            targetCard.Paint += PaintTargetCard;
-            stepMode.Controls.Add(targetCard);
-
-            string[] titles = { "仅更换密钥", "普通升级", "指定版本升级", "强制升级" };
-            string[] descs =
-            {
-                "用 slmgr 安装所选密钥，只切换版本，不做就地升级。",
-                "不指定版本，由安装程序自行判断，等同普通就地升级。",
-                "就地升级到所选版本，自动传入对应的预安装密钥。",
-                "改写注册表伪装版本，可跨过官方升级路径限制，需二次确认。"
-            };
-            string[] keys = { "K", "S", "U", "F" };
-            RunMode[] modes = { RunMode.KeyOnly, RunMode.Normal, RunMode.Pkey, RunMode.Force };
-
-            for (int i = 0; i < 4; i++)
-            {
-                ModeCard c = new ModeCard();
-                c.Text = titles[i];
-                c.Description = descs[i];
-                c.Shortcut = keys[i];
-                c.Mode = modes[i];
-                c.Location = new Point((i % 2) * 468, 142 + (i / 2) * 100);
-                c.Click += ModeCardClick;
-                c.MouseEnter += delegate { };
-                stepMode.Controls.Add(c);
-                modeCards.Add(c);
-            }
-
-            logCard = new Panel();
-            logCard.Location = new Point(0, 352);
-            logCard.Size = new Size(924, 108);
-            logCard.BackColor = Theme.BgTop;
-            logCard.Paint += PaintLogCard;
-            stepMode.Controls.Add(logCard);
-        }
-
-        private void PaintLogCard(object sender, PaintEventArgs e)
-        {
-            Panel p = (Panel)sender;
-            Graphics g = e.Graphics;
-            Theme.EnableSmooth(g);
-            Rectangle r = new Rectangle(0, 0, p.Width - 1, p.Height - 1);
-            Theme.FillRound(g, r, Theme.S(10), Theme.Sunken);
-            Theme.StrokeRound(g, r, Theme.S(10), Theme.Line, 1f);
-            TextRenderer.DrawText(g, "运行日志", Theme.Small, new Point(Theme.S(17), Theme.S(9)), Theme.Dim,
-                TextFormatFlags.NoPrefix);
-
-            if (logLines.Count == 0)
-            {
-                TextRenderer.DrawText(g, "选择执行方式后点「开始执行」，过程信息会记录在这里。",
-                    Theme.MonoSmall, new Point(Theme.S(17), Theme.S(34)), Theme.Dim, TextFormatFlags.NoPrefix);
-                return;
-            }
-
-            int lineH = Theme.S(17);
-            int maxLines = Math.Max(1, (r.Height - Theme.S(42)) / lineH);
-            int shown = Math.Min(maxLines, logLines.Count);
-            int startY = Theme.S(34);
-            for (int i = 0; i < shown; i++)
-            {
-                string line = logLines[logLines.Count - shown + i];
-                bool newest = i == shown - 1;
-                TextRenderer.DrawText(g, line, Theme.MonoSmall,
-                    new Rectangle(Theme.S(17), startY + i * lineH, r.Width - Theme.S(34), lineH),
-                    newest ? Theme.Text : Theme.Muted,
-                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-            }
-        }
-
-        private Label SectionTitle(string text, Control parent)
-        {
-            Label l = new Label();
-            l.AutoSize = false;
-            l.Location = new Point(0, 0);
-            l.Size = new Size(Theme.S(924), Theme.S(30));
-            l.Font = Theme.H1;
-            l.ForeColor = Theme.Text;
-            l.BackColor = Color.Transparent;
-            l.Text = text;
-            parent.Controls.Add(l);
-            return l;
-        }
-
         private void FormMouseDown(object sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left) return;
@@ -492,7 +502,7 @@ namespace UpgradeTool
                 Capture = true;
                 return;
             }
-            if (e.Y < Theme.S(112))
+            if (e.Y < Theme.S(56))
             {
                 ReleaseCapture();
                 SendMessage(Handle, 0xA1, 0x2, 0);
@@ -550,9 +560,24 @@ namespace UpgradeTool
             if (target == 2 && currentEdition == null) return;
 
             step = target;
-            stepSource.Visible = step == 0;
-            stepEdition.Visible = step == 1;
-            stepMode.Visible = step == 2;
+            pageSource.Visible = step == 0;
+            pageEdition.Visible = step == 1;
+            pageMode.Visible = step == 2;
+
+            navSource.Selected = step == 0;
+            navEdition.Selected = step == 1;
+            navMode.Selected = step == 2;
+            navSource.Invalidate();
+            navEdition.Invalidate();
+            navMode.Invalidate();
+
+            navIndicatorTarget = NavTop(SelectedNav());
+            if (!navIndicatorInit)
+            {
+                navIndicatorY = navIndicatorTarget;
+                nav.IndicatorY = navIndicatorY;
+                navIndicatorInit = true;
+            }
 
             btnBack.Visible = step > 0;
             btnNext.Visible = step < 2;
@@ -571,9 +596,9 @@ namespace UpgradeTool
 
         private void StartSlide()
         {
-            slidePanel = step == 0 ? stepSource : (step == 1 ? stepEdition : stepMode);
-            slideTicks = 1;
-            slidePanel.Left = Theme.S(44);
+            slidePage = step == 0 ? pageSource : (step == 1 ? pageEdition : pageMode);
+            slideTicks = 0;
+            slidePage.Left = contentLeft + Theme.S(28);
         }
 
         private void AnimTick(object sender, EventArgs e)
@@ -585,115 +610,78 @@ namespace UpgradeTool
                 Opacity = fadeTicks;
             }
 
-            if (slideTicks > 0 && slidePanel != null)
+            if (paletteT < 1f)
+            {
+                paletteT += 0.1f;
+                if (paletteT > 1f) paletteT = 1f;
+                float t = 1f - (1f - paletteT) * (1f - paletteT);
+                Theme.Blend(palFrom, palTo, t);
+                ApplyThemeSurfaces();
+            }
+
+            if (slidePage != null)
             {
                 slideTicks++;
-                float t = Math.Min(1f, slideTicks / 8f);
-                float ease = 1f - (1f - t) * (1f - t);
-                slidePanel.Left = Theme.S(28) + (int)(Theme.S(16) * (1f - ease));
-                if (t >= 1f) slideTicks = 0;
+                float t = Math.Min(1f, slideTicks / 14f);
+                float ease = 1f - (float)Math.Pow(1f - t, 3);
+                slidePage.Left = contentLeft + (int)(Theme.S(28) * (1f - ease));
+                if (t >= 1f)
+                {
+                    slidePage.Left = contentLeft;
+                    slidePage = null;
+                }
+            }
+
+            if (navIndicatorInit && Math.Abs(navIndicatorY - navIndicatorTarget) > 0.15f)
+            {
+                navIndicatorY += (navIndicatorTarget - navIndicatorY) * 0.28f;
+                if (Math.Abs(navIndicatorY - navIndicatorTarget) <= 0.15f)
+                    navIndicatorY = navIndicatorTarget;
+                nav.IndicatorY = navIndicatorY;
+                nav.Invalidate(new Rectangle(0, Theme.S(70), Theme.S(12), ClientSize.Height - Theme.S(70)));
             }
 
             if (spinner.Active)
             {
                 spinner.Angle = (spinner.Angle + 10f) % 360f;
-                Invalidate(new Rectangle(0, ClientSize.Height - Theme.S(90), ClientSize.Width, Theme.S(90)));
-            }
-
-            foreach (AnimatedCard c in allCards)
-            {
-                float old = c.HoverProgress;
-                float delta = c.HoverTarget ? 0.14f : -0.14f;
-                c.HoverProgress = Math.Max(0f, Math.Min(1f, c.HoverProgress + delta));
-                if (Math.Abs(old - c.HoverProgress) > 0.001f) c.Invalidate();
-            }
-            foreach (ModeCard c in modeCards)
-            {
-                float old = c.HoverProgress;
-                float delta = c.HoverTarget ? 0.18f : -0.18f;
-                c.HoverProgress = Math.Max(0f, Math.Min(1f, c.HoverProgress + delta));
-                if (Math.Abs(old - c.HoverProgress) > 0.001f) c.Invalidate();
+                Invalidate(new Rectangle(0, footerLineY, ClientSize.Width, ClientSize.Height - footerLineY));
             }
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            int W = ClientSize.Width;
-            int gh = Theme.S(150);
             e.Graphics.Clear(Theme.BgTop);
-            using (LinearGradientBrush b = new LinearGradientBrush(
-                new Rectangle(0, 0, W, gh), Theme.HeaderTop, Theme.BgTop, 90f))
-            {
-                e.Graphics.FillRectangle(b, 0, 0, W, gh);
-            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            if (nav == null) return;
             Graphics g = e.Graphics;
             Theme.EnableSmooth(g);
 
-            TextRenderer.DrawText(g, Data.AppName, Theme.Title,
-                new Point(Theme.S(28), Theme.S(18)), Theme.Text, TextFormatFlags.NoPrefix);
-            TextRenderer.DrawText(g, "Windows 10 / 11 / Server   ·   " + Data.Version + "   ·   2026",
-                Theme.Small, new Point(Theme.S(29), Theme.S(52)), Theme.Muted, TextFormatFlags.NoPrefix);
-
-            string[] names = { "安装源", "目标版本", "执行方式" };
-            int W = ClientSize.Width;
-            int stepBase = W - Theme.S(653);
-            int[] xs = { stepBase, stepBase + Theme.S(172), stepBase + Theme.S(344) };
-            int circle = Theme.S(24);
-            int circleY = Theme.S(26);
-            int lineY = Theme.S(38);
-            for (int i = 0; i < 3; i++)
+            int left = nav.Left + nav.Width;
+            using (Pen p = new Pen(Theme.Divider, 1f))
             {
-                if (i < 2)
-                {
-                    using (Pen p = new Pen(i < step ? Theme.Accent : Theme.Line, Theme.SM(1.2f)))
-                    {
-                        g.DrawLine(p, xs[i] + Theme.S(26), lineY, xs[i + 1] - Theme.S(10), lineY);
-                    }
-                }
-                bool active = i == step;
-                bool done = i < step;
-                Rectangle cr = new Rectangle(xs[i], circleY, circle, circle);
-                if (active)
-                {
-                    using (SolidBrush b = new SolidBrush(Theme.Accent)) g.FillEllipse(b, cr);
-                }
-                else
-                {
-                    using (Pen p = new Pen(done ? Theme.Accent2 : Theme.Line, Theme.SM(1.4f))) g.DrawEllipse(p, cr);
-                }
-                if (active)
-                {
-                    using (Pen glow = new Pen(Color.FromArgb(70, Theme.Accent), Theme.SM(1.2f)))
-                        g.DrawEllipse(glow, cr.X - Theme.S(4), cr.Y - Theme.S(4),
-                            cr.Width + Theme.S(8), cr.Height + Theme.S(8));
-                    using (Pen glow2 = new Pen(Color.FromArgb(30, Theme.Accent), 1f))
-                        g.DrawEllipse(glow2, cr.X - Theme.S(7), cr.Y - Theme.S(7),
-                            cr.Width + Theme.S(14), cr.Height + Theme.S(14));
-                }
-                string num = (i + 1).ToString();
-                TextRenderer.DrawText(g, num, Theme.MonoSmall, cr,
-                    active ? Color.White : (done ? Theme.Accent2 : Theme.Dim),
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
-                TextRenderer.DrawText(g, names[i], Theme.Small,
-                    new Point(xs[i] + Theme.S(32), Theme.S(30)),
-                    active || done ? Theme.Text : Theme.Dim, TextFormatFlags.NoPrefix);
+                g.DrawLine(p, left, footerLineY, ClientSize.Width, footerLineY);
             }
 
-            using (Pen p = new Pen(Theme.Line, 1f))
+            int textW = btnBack.Left - Theme.S(24) - contentLeft;
+            if (textW > Theme.S(80))
             {
-                g.DrawLine(p, Theme.S(28), Theme.S(112), W - Theme.S(28), Theme.S(112));
+                TextRenderer.DrawText(g, footerText, Theme.Body,
+                    new Rectangle(contentLeft, footerLineY, textW, ClientSize.Height - footerLineY),
+                    footerColor,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             }
 
             if (spinner.Active)
             {
-                Rectangle sp = new Rectangle(btnBack.Left - Theme.S(26), ClientSize.Height - Theme.S(64),
-                    Theme.S(16), Theme.S(16));
-                spinner.Draw(g, sp, Theme.Accent2);
+                int sz = Theme.S(16);
+                Rectangle sp = new Rectangle(btnBack.Left - Theme.S(30),
+                    footerLineY + (ClientSize.Height - footerLineY - sz) / 2, sz, sz);
+                spinner.Draw(g, sp, Theme.Accent);
             }
         }
 
@@ -703,13 +691,13 @@ namespace UpgradeTool
             {
                 if (currentSource != null)
                 {
-                    lblFooter.ForeColor = Theme.Muted;
-                    lblFooter.Text = "已选择安装源：" + currentSource.Path;
+                    footerColor = Theme.Muted;
+                    footerText = "已选择安装源：" + currentSource.Path;
                 }
                 else
                 {
-                    lblFooter.ForeColor = Theme.Warn;
-                    lblFooter.Text = "正在扫描安装介质…也可以手动选择文件夹或 ISO。";
+                    footerColor = Theme.Warn;
+                    footerText = "正在扫描安装介质…也可以手动选择文件夹或 ISO。";
                 }
                 btnNext.Enabled = currentSource != null;
             }
@@ -717,26 +705,27 @@ namespace UpgradeTool
             {
                 if (currentEdition != null)
                 {
-                    lblFooter.ForeColor = Theme.Muted;
-                    lblFooter.Text = "已选择：" + currentEdition.Name +
-                                     (string.IsNullOrEmpty(currentEdition.EditionId)
-                                         ? "   ·   EditionID 未指定"
-                                         : "   ·   " + currentEdition.EditionId);
+                    footerColor = Theme.Muted;
+                    footerText = "已选择：" + currentEdition.Name +
+                                 (string.IsNullOrEmpty(currentEdition.EditionId)
+                                     ? "   ·   EditionID 未指定"
+                                     : "   ·   " + currentEdition.EditionId);
                 }
                 else
                 {
-                    lblFooter.ForeColor = Theme.Warn;
-                    lblFooter.Text = "请选择一个目标版本。";
+                    footerColor = Theme.Warn;
+                    footerText = "请选择一个目标版本。";
                 }
                 btnNext.Enabled = currentEdition != null;
             }
             else
             {
-                lblFooter.ForeColor = Theme.Muted;
-                lblFooter.Text = "目标：" + (currentEdition == null ? "-" : currentEdition.Name) +
-                                 "   ·   方式：" + ModeName(currentMode);
+                footerColor = Theme.Muted;
+                footerText = (currentEdition == null ? "-" : currentEdition.Name) +
+                             "   ·   " + ModeName(currentMode);
                 btnStart.Enabled = !busy && currentEdition != null && currentSource != null;
             }
+            Invalidate(new Rectangle(0, footerLineY, ClientSize.Width, ClientSize.Height - footerLineY));
         }
 
         private static string ModeName(RunMode m)
@@ -759,6 +748,34 @@ namespace UpgradeTool
             spinner.Active = value;
             Cursor = value ? Cursors.AppStarting : Cursors.Default;
             UpdateFooter();
+        }
+
+        // 供截图 / 自动化验证使用：跳转到指定步骤并停在动画结束态
+        internal void ReflectStep(int target)
+        {
+            if (target >= 1 && currentSource == null)
+            {
+                currentSource = sources.Count > 0
+                    ? sources[0]
+                    : new MediaSource("D:\\", "D:  安装介质（预览）");
+                RefreshSourceSelection();
+            }
+            if (target >= 2 && currentEdition == null)
+            {
+                currentEdition = Data.Editions[1];
+                HighlightEdition();
+            }
+            GoStep(target);
+            slidePage = null;
+            pageSource.Left = contentLeft;
+            pageEdition.Left = contentLeft;
+            pageMode.Left = contentLeft;
+            navIndicatorY = navIndicatorTarget;
+            nav.IndicatorY = navIndicatorY;
+            fadeTicks = 1f;
+            Opacity = 1;
+            Invalidate(true);
+            Application.DoEvents();
         }
     }
 }

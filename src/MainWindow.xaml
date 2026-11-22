@@ -1,0 +1,177 @@
+<Window
+    x:Class="UpgradeTool.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="无损跨版本升级Windows">
+    <Grid x:Name="Root" Loaded="Root_Loaded" KeyDown="Root_KeyDown"
+          Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.Resources>
+            <Style x:Key="SurfaceStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="Padding" Value="20" />
+            </Style>
+            <CollectionViewSource x:Name="EditionGroups" IsSourceGrouped="True" />
+        </Grid.Resources>
+        <NavigationView x:Name="Navigation" PaneDisplayMode="Auto" OpenPaneLength="240"
+                        IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                        IsPaneToggleButtonVisible="True" SelectionChanged="Navigation_SelectionChanged"
+                        ItemInvoked="Navigation_ItemInvoked" PaneTitle="Windows 升级工具">
+            <NavigationView.MenuItems>
+                <NavigationViewItem x:Name="SourceNav" Content="安装源" Tag="0" Icon="Folder" />
+                <NavigationViewItem x:Name="EditionNav" Content="目标版本" Tag="1" Icon="AllApps" />
+                <NavigationViewItem x:Name="RunNav" Content="执行方式" Tag="2" Icon="Play" />
+            </NavigationView.MenuItems>
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="关于" Tag="about" Icon="Help" SelectsOnInvoked="False" />
+                <NavigationViewItem x:Name="ThemeNav" Content="切换到深色主题" Tag="theme" SelectsOnInvoked="False">
+                    <NavigationViewItem.Icon>
+                        <FontIcon x:Name="ThemeNavIcon" Glyph="&#xE706;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+            <Grid Padding="24,16,24,20" MaxWidth="1120" HorizontalAlignment="Stretch">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Margin="0,0,0,16" />
+                <ScrollViewer x:Name="PageScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,20">
+                    <StackPanel Spacing="24">
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="StepLabel" Text="步骤 1 / 3" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="PageTitle" Text="选择安装源" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="PageDescription" Text="选择 Windows 安装介质，或挂载 ISO 镜像。" TextWrapping="Wrap"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                        <StackPanel x:Name="SourcePage" Spacing="16">
+                            <Border Style="{StaticResource SurfaceStyle}">
+                                <StackPanel Spacing="16">
+                                    <TextBlock Text="安装介质" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <TextBlock Text="有效目录须同时包含 setup.exe 和 sources 文件夹。" TextWrapping="Wrap" />
+                                    <VariableSizedWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="3">
+                                        <Button x:Name="FolderButton" Content="选择文件夹" Click="Folder_Click" Margin="0,0,8,8" />
+                                        <Button x:Name="IsoButton" Content="选择 ISO" Click="Iso_Click" Margin="0,0,8,8" />
+                                        <Button x:Name="RefreshButton" Content="重新扫描" Click="Refresh_Click" Margin="0,0,0,8" />
+                                    </VariableSizedWrapGrid>
+                                    <ListView x:Name="SourceList" SelectionMode="Single" MaxHeight="280"
+                                              SelectionChanged="SourceList_SelectionChanged" AutomationProperties.Name="可用安装源">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Spacing="4" Padding="4,8">
+                                                    <TextBlock Text="{Binding Label}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding Path}" TextWrapping="Wrap" IsTextSelectionEnabled="True"
+                                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <TextBlock x:Name="SourceHint" Text="正在准备扫描…" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="仅更换密钥？"
+                                     Message="无需安装介质。可以直接前往目标版本，随后选择“仅更换密钥”。" />
+                        </StackPanel>
+                        <StackPanel x:Name="EditionPage" Visibility="Collapsed" Spacing="16">
+                            <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="预安装密钥不会激活 Windows"
+                                     Message="普通升级无需选择目标版本。LTSC 和 Server 须使用对应的安装介质。" />
+                            <Border Style="{StaticResource SurfaceStyle}">
+                                <StackPanel Spacing="16">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="27 个预置版本" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                                        <Button x:Name="CustomButton" Grid.Column="1" Content="自定义版本" Click="Custom_Click" />
+                                    </Grid>
+                                    <ListView x:Name="EditionList" ItemsSource="{Binding Source={StaticResource EditionGroups}}"
+                                              MaxHeight="430" SelectionMode="Single" SelectionChanged="EditionList_SelectionChanged"
+                                              AutomationProperties.Name="目标 Windows 版本">
+                                        <ListView.GroupStyle>
+                                            <GroupStyle>
+                                                <GroupStyle.HeaderTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Key}" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="4,16,0,8" TextWrapping="Wrap" />
+                                                    </DataTemplate>
+                                                </GroupStyle.HeaderTemplate>
+                                            </GroupStyle>
+                                        </ListView.GroupStyle>
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Spacing="4" Padding="4,8">
+                                                    <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding EditionId}" Style="{StaticResource CaptionTextBlockStyle}"
+                                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                    </ListView>
+                                    <TextBlock x:Name="EditionDetail" Text="尚未选择版本；普通升级可直接继续。" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    <Button x:Name="ClearEditionButton" Content="清除选择（普通升级）" Click="ClearEdition_Click" HorizontalAlignment="Left" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel x:Name="RunPage" Visibility="Collapsed" Spacing="16">
+                            <Border Style="{StaticResource SurfaceStyle}">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="本次操作" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <TextBlock x:Name="SummaryText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SurfaceStyle}">
+                                <StackPanel Spacing="16">
+                                    <RadioButtons x:Name="Modes" Header="执行方式" MaxColumns="1" SelectedIndex="1" SelectionChanged="Modes_SelectionChanged">
+                                        <RadioButton Tag="KeyOnly" AutomationProperties.Name="仅更换密钥，快捷键 K">
+                                            <StackPanel Spacing="4"><TextBlock Text="仅更换密钥" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="安装所选预安装密钥，无需安装介质。快捷键 K" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                                        </RadioButton>
+                                        <RadioButton Tag="Normal" AutomationProperties.Name="普通升级，快捷键 S">
+                                            <StackPanel Spacing="4"><TextBlock Text="普通升级" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="由 Windows 安装程序判断版本，无需指定目标。快捷键 S" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                                        </RadioButton>
+                                        <RadioButton Tag="Pkey" AutomationProperties.Name="指定版本升级，快捷键 U">
+                                            <StackPanel Spacing="4"><TextBlock Text="指定版本升级" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="使用目标版本的预安装密钥启动安装程序。快捷键 U" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                                        </RadioButton>
+                                        <RadioButton Tag="Force" AutomationProperties.Name="强制升级，快捷键 F">
+                                            <StackPanel Spacing="4"><TextBlock Text="强制升级" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="改写系统版本注册表后启动安装，需要 EditionID 并再次确认。快捷键 F" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                                        </RadioButton>
+                                    </RadioButtons>
+                                    <InfoBar x:Name="ModeHint" IsOpen="True" IsClosable="False" Severity="Informational" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource SurfaceStyle}">
+                                <StackPanel Spacing="12">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <TextBlock Text="运行日志" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                        <Button x:Name="ExportButton" Grid.Column="1" Content="导出日志" Click="Export_Click" />
+                                    </Grid>
+                                    <TextBox x:Name="LogText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                                             MinHeight="140" MaxHeight="260" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             PlaceholderText="执行过程会记录在这里，可选中复制或导出。" AutomationProperties.Name="运行日志" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+                <Grid Grid.Row="2" ColumnSpacing="12" Padding="0,16,0,0" BorderThickness="0,1,0,0"
+                      BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <ProgressRing x:Name="BusyRing" Width="20" Height="20" IsActive="False" Visibility="Collapsed" />
+                        <TextBlock x:Name="StatusText" Text="准备就绪" TextWrapping="Wrap" VerticalAlignment="Center"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+                    <Button x:Name="BackButton" Grid.Column="1" Content="上一步" Click="Back_Click" Visibility="Collapsed" VerticalAlignment="Center" />
+                    <Button x:Name="NextButton" Grid.Column="2" Content="下一步" Click="Next_Click" Style="{StaticResource AccentButtonStyle}" VerticalAlignment="Center" />
+                </Grid>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Window>

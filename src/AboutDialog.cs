@@ -18,8 +18,9 @@ namespace UpgradeTool
         {
             Text = "关于作者";
             FormBorderStyle = FormBorderStyle.None;
+            AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(Theme.S(540), Theme.S(412));
+            ClientSize = new Size(Theme.S(540), Theme.S(438));
             BackColor = Theme.BgTop;
             Font = Theme.Body;
             DoubleBuffered = true;
@@ -101,10 +102,20 @@ namespace UpgradeTool
             repo.Click += delegate { OpenUrl(Data.RepoUrl + "/issues"); };
             Controls.Add(repo);
 
+            Label logHint = new Label();
+            logHint.AutoSize = false;
+            logHint.Location = new Point(Theme.S(24), Theme.S(306));
+            logHint.Size = new Size(Theme.S(492), Theme.S(20));
+            logHint.Font = Theme.Small;
+            logHint.ForeColor = Theme.Accent2;
+            logHint.BackColor = Color.Transparent;
+            logHint.Text = "反馈时请把运行日志一起发给我（在执行方式页点「导出日志」）。";
+            Controls.Add(logHint);
+
             string mail = Data.QqMail == null ? "" : Data.QqMail.Trim();
             Label mailCaption = new Label();
             mailCaption.AutoSize = false;
-            mailCaption.Location = new Point(Theme.S(24), Theme.S(316));
+            mailCaption.Location = new Point(Theme.S(24), Theme.S(334));
             mailCaption.Size = new Size(Theme.S(120), Theme.S(22));
             mailCaption.Font = Theme.Body;
             mailCaption.ForeColor = Theme.Muted;
@@ -114,7 +125,7 @@ namespace UpgradeTool
 
             Label mailValue = new Label();
             mailValue.AutoSize = false;
-            mailValue.Location = new Point(Theme.S(112), Theme.S(316));
+            mailValue.Location = new Point(Theme.S(112), Theme.S(334));
             mailValue.Size = new Size(Theme.S(300), Theme.S(22));
             mailValue.Font = Theme.Mono;
             mailValue.ForeColor = mail.Length > 0 ? Theme.Accent2 : Theme.Dim;
@@ -125,7 +136,7 @@ namespace UpgradeTool
             if (mail.Length > 0)
             {
                 UButton copy = new UButton("复制");
-                copy.Location = new Point(Theme.S(420), Theme.S(310));
+                copy.Location = new Point(Theme.S(420), Theme.S(328));
                 copy.Size = new Size(Theme.S(96), Theme.S(32));
                 copy.Click += delegate
                 {
@@ -143,14 +154,14 @@ namespace UpgradeTool
 
             UButton btnSite = new UButton("打开作者网站");
             btnSite.Primary = true;
-            btnSite.Location = new Point(ClientSize.Width - Theme.S(24) - Theme.S(148), Theme.S(358));
+            btnSite.Location = new Point(ClientSize.Width - Theme.S(24) - Theme.S(148), Theme.S(384));
             btnSite.Size = new Size(Theme.S(148), Theme.S(38));
             btnSite.Click += delegate { OpenUrl(Data.Website); };
             Controls.Add(btnSite);
 
             UButton btnClose = new UButton("关闭");
             btnClose.Location = new Point(ClientSize.Width - Theme.S(24) - Theme.S(148) - Theme.S(118),
-                Theme.S(358));
+                Theme.S(384));
             btnClose.Size = new Size(Theme.S(108), Theme.S(38));
             btnClose.Click += delegate { Close(); };
             Controls.Add(btnClose);
@@ -163,7 +174,7 @@ namespace UpgradeTool
 
             Load += delegate
             {
-                using (GraphicsPath p = Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.S(12)))
+                using (GraphicsPath p = Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.S(8)))
                 {
                     Region = new Region(p);
                 }
@@ -213,8 +224,8 @@ namespace UpgradeTool
             base.OnPaint(e);
             Graphics g = e.Graphics;
             Theme.EnableSmooth(g);
-            Theme.StrokeRound(g, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(12), Theme.Line, 1f);
-            using (Pen p = new Pen(Theme.Line, 1f))
+            Theme.StrokeRound(g, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(8), Theme.CardStroke, 1f);
+            using (Pen p = new Pen(Theme.Divider, 1f))
             {
                 g.DrawLine(p, Theme.S(24), Theme.S(112), Width - Theme.S(24), Theme.S(112));
                 g.DrawLine(p, Theme.S(24), Theme.S(186), Width - Theme.S(24), Theme.S(186));

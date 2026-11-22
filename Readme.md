@@ -105,20 +105,38 @@ Windows 10 / 11 / Server 就地升级与版本切换工具（EXE 版为主，附
 
 ## 四、图形界面版（EXE）
 
-同目录的 `无损跨版本升级Windows.exe` 是主力版本，后续功能只在这里更新：
+图形界面源码已迁移为原生 **WinUI 3**，以 Microsoft WinUI Gallery 的控件、主题资源和布局层级为参照。入口工程为 `src/UpgradeTool.csproj`。已完成依赖还原、Release x64 自包含单文件发布，产物为 `publish/win-x64/无损跨版本升级Windows.exe`（约 92 MB，已内嵌 .NET 运行时、Windows App SDK 和界面资源，运行时会自动解包到临时目录）。**尚未进行实际界面和升级功能运行验证；根目录及 release 中已有 EXE 未被覆盖。**
 
-- 自动检测、扫描盘符、选择文件夹、选择 ISO 并自动挂载；
-- 27 个预置版本分组列表，选中即显示 EditionID 和预安装密钥；
-- 列表末尾的「自定义版本」可以自己填写密钥、EditionID 和 ProductName；
-- 四种执行方式做成卡片，选中后点「开始执行」；
-- 运行过程有状态提示和日志，强制升级同样需要确认；
-- 浅色 / 深色界面默认跟随系统，右上角的太阳 / 月亮按钮可以随时切换，选择会被记住；窗口可自由拉伸；
-- 适配高 DPI（125% / 150% / 200% 缩放），文字和控件按系统缩放比例绘制，不会发虚；
-- 右上角「关于」按钮：可打开作者网站、跳转 GitHub 反馈问题，网络不好时也可以用 QQ 邮箱反馈；
-- 悬停、选中、切换步骤带有轻量动效；
-- 启动时自动请求管理员权限。
+- 原生 NavigationView 导航：安装源 → 目标版本 → 执行方式，可直接切换步骤；
+- 异步扫描安装介质，通过系统选择器选择文件夹、ISO 和日志保存位置；
+- 原生分组 ListView 保留 27 个预置版本，「自定义版本」可填写密钥、EditionID 和 ProductName；
+- 四种方式使用原生单选控件，核对摘要后点击「开始执行」；仅更换密钥无需安装源，普通升级无需选择目标版本；
+- 使用 InfoBar、ProgressRing 显示状态，运行日志可选中复制，也可导出为 UTF-8 txt；强制升级须再次确认；
+- 导航底部可选择跟随系统 / 浅色 / 深色主题，保留系统强调色和主题记忆；窗口尺寸会被记住；
+- 使用 WinUI 原生字体、焦点、键盘导航及 DPI 缩放；支持 Mica 的环境使用系统背景材质，其他环境使用主题背景；
+- 导航底部的「关于」提供作者网站、GitHub 反馈和 QQ 邮箱；
+- 清单要求管理员权限，由 Windows 在启动时请求；取消授权时应用不启动。
 
-运行环境：Windows 10 / 11，使用系统自带的 .NET Framework 4.8，无需安装任何运行库。
+执行方式页保留 `K / S / U / F` 快捷键；文本输入、列表导航和对话框优先使用控件自身的键盘行为，避免输入时误触执行。强制升级写入的系统版本注册表值不会自动恢复，安装取消或失败后也可能保留，请先备份。
+
+### 源码环境与构建
+
+- 工程目标：`.NET 10`、Windows App SDK `2.6.5`，固定为 unpackaged `x64`；目标平台 API 为 Windows 11 SDK 22621，最低声明 Windows 10 2004（19041）。最低声明不代表已完成所有系统及 Server 版本的运行验证。
+- 开发环境需要 .NET 10 SDK、Windows SDK 和支持 WinUI / Windows App SDK 的构建工具；首次构建需要访问 NuGet。
+- 工程使用 `.NET` + Windows App SDK 自包含单文件发布：所有依赖打进一个 EXE，分发时只需这一个文件，不需要另外安装 .NET 或 Windows App SDK 运行时。
+- 旧 WinForms 源码保留作迁移参考，显式排除在新项目编译列表之外；新入口仅为 `App.xaml` / `App.xaml.cs`。
+
+可使用以下命令重新还原、构建和发布（本次已完成还原及 Release 发布）：
+
+```powershell
+dotnet restore .\src\UpgradeTool.csproj
+dotnet build .\src\UpgradeTool.csproj -c Release --no-restore
+dotnet publish .\src\UpgradeTool.csproj -c Release --no-restore -o .\publish\win-x64
+```
+
+发布结果为单个 EXE，无需附带其他文件。实际交付前仍需验证主题、DPI、窄窗口、管理员选择器、快捷键、取消流程及日志导出；本次未执行密钥安装、系统版本注册表改写或系统升级。
+
+编译产物（`src/bin`、`src/obj`、`publish`）已加入 `.gitignore`，仓库只保留源码；EXE 通过 GitHub Releases 作为附件分发。
 
 ## 五、版本自动生成对照表
 
@@ -224,7 +242,8 @@ Windows 11 企业版 LTSC 2024（基于 24H2）已于 2024 年 10 月 1 日正�
 - GitHub 仓库：<https://github.com/ZHCOOL520/Windows-Edition-Upgrade>
 - 问题反馈：<https://github.com/ZHCOOL520/Windows-Edition-Upgrade/issues>
 - QQ 邮箱：`zhcool520@qq.com`
-- 如果网络不好打不开 GitHub，可以在 EXE 右上角点「关于」按钮，用里面显示的 QQ 邮箱反馈。
+- 反馈时请把运行日志一起发给我：在执行方式页面点「导出日志」即可保存成 txt。
+- 如果网络不好打不开 GitHub，可以在新版导航底部点「关于」，用里面显示的 QQ 邮箱反馈。
 
 ## 中文版说明
 

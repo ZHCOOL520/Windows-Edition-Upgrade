@@ -63,6 +63,7 @@ namespace UpgradeTool
         {
             Text = "自定义版本";
             FormBorderStyle = FormBorderStyle.None;
+            AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(Theme.S(540), Theme.S(352));
             BackColor = Theme.BgTop;
@@ -148,7 +149,7 @@ namespace UpgradeTool
 
             Load += delegate
             {
-                using (GraphicsPath p = Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.S(12)))
+                using (GraphicsPath p = Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.S(8)))
                 {
                     Region = new Region(p);
                 }
@@ -182,7 +183,7 @@ namespace UpgradeTool
             base.OnPaint(e);
             Graphics g = e.Graphics;
             Theme.EnableSmooth(g);
-            Theme.StrokeRound(g, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(12), Theme.Line, 1f);
+            Theme.StrokeRound(g, new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(8), Theme.CardStroke, 1f);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
