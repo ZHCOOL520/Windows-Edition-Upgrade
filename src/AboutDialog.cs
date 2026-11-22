@@ -119,7 +119,7 @@ namespace UpgradeTool
             mailValue.Font = Theme.Mono;
             mailValue.ForeColor = mail.Length > 0 ? Theme.Accent2 : Theme.Dim;
             mailValue.BackColor = Color.Transparent;
-            mailValue.Text = mail.Length > 0 ? mail : "暂未填写";
+            mailValue.Text = mail.Length > 0 ? mail : "zhcool520@qq.com";
             Controls.Add(mailValue);
 
             if (mail.Length > 0)
