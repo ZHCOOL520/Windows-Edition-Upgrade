@@ -19,6 +19,7 @@ public sealed partial class MainWindow : Window
     private Edition currentEdition;
     private SourceItem currentSource;
     private RunMode currentMode = RunMode.Normal;
+    private SpoofProfile currentSpoof = SpoofProfile.Win10;
     private int step;
     private bool ready;
     private bool busy;
@@ -154,8 +155,9 @@ public sealed partial class MainWindow : Window
         if (currentMode != RunMode.KeyOnly && (currentSource == null || !UpgradeServices.IsMediaRoot(currentSource.Path)))
             return "请先选择有效的安装源。";
         if (currentMode != RunMode.Normal && currentEdition == null) return "请先选择目标版本。";
-        if (currentMode == RunMode.Force && string.IsNullOrWhiteSpace(currentEdition.EditionId))
-            return "强制升级需要填写 EditionID，请编辑自定义版本。";
+        if ((currentMode == RunMode.Force || currentMode == RunMode.Downgrade) &&
+            string.IsNullOrWhiteSpace(currentEdition.EditionId))
+            return "该方法需要填写 EditionID，请编辑自定义版本。";
         return null;
     }
 
@@ -164,7 +166,8 @@ public sealed partial class MainWindow : Window
         RunMode.KeyOnly => "仅更换密钥",
         RunMode.Normal => "普通升级",
         RunMode.Pkey => "指定版本升级",
-        _ => "强制升级"
+        RunMode.Force => "强制升级",
+        _ => "实验性降级（伪装旧版本）"
     };
 
     private void UpdateState()
@@ -178,15 +181,39 @@ public sealed partial class MainWindow : Window
         NextButton.IsEnabled = !busy && !setupStarted && UpgradeServices.IsAdministrator();
         string validation = ValidationMessage();
         if (!busy) StatusText.Text = setupStarted ? "安装程序已启动" : step == 2 ? validation ?? "准备就绪" : "准备就绪";
-        ModeHint.Severity = currentMode == RunMode.Force ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
-        ModeHint.Title = currentMode == RunMode.Force ? "此操作会修改系统版本注册表" : ModeName(currentMode);
+        bool risky = currentMode == RunMode.Force || currentMode == RunMode.Downgrade;
+        ModeHint.Severity = risky ? InfoBarSeverity.Warning : InfoBarSeverity.Informational;
+        ModeHint.Title = currentMode switch
+        {
+            RunMode.Force => "此操作会修改系统版本注册表",
+            RunMode.Downgrade => currentSpoof == SpoofProfile.Win7
+                ? "实验性选项（伪装 Windows 7）：风险最高，可能出更大的问题"
+                : "实验性选项（伪装 Windows 10）：容易出问题，未经测试",
+            _ => ModeName(currentMode)
+        };
         ModeHint.Message = currentMode switch
         {
             RunMode.KeyOnly => "只安装密钥，不执行就地升级；预安装密钥不能激活系统。",
             RunMode.Normal => "忽略目标版本选择，使用所选介质直接启动普通就地升级。",
             RunMode.Pkey => "安装介质需要包含目标版本，或支持从其基础版本生成目标版本。",
-            _ => "该方法不受微软支持。请备份系统和重要数据，准备恢复介质；启动前还会再次确认。"
+            RunMode.Force => "该方法不受微软支持。请备份系统和重要数据，准备恢复介质；启动前还会再次确认。",
+            _ when currentSpoof == SpoofProfile.Win7 =>
+                "把 CurrentVersion/CurrentBuild 等注册表值伪装成 Windows 7 SP1（6.1.7601）。" +
+                "与伪装 Windows 10 相比更激进，依赖系统版本的组件可能出现异常，安装程序也可能直接拒绝或失败，" +
+                "注册表修改不会自动恢复。请完整备份并准备恢复介质，务必先在虚拟机中测试。",
+            _ => "把 CurrentBuild 等版本注册表值伪装成 Windows 10 22H2，尝试绕过安装程序的降级拦截。" +
+                 "安装程序可能仍拒绝降级，也可能失败或导致系统异常；注册表修改不会自动恢复。" +
+                 "请完整备份并准备恢复介质，建议先在虚拟机中测试。"
         };
+        SpoofPicker.Visibility = currentMode == RunMode.Downgrade ? Visibility.Visible : Visibility.Collapsed;
+        SpoofPicker.IsEnabled = !busy && currentMode == RunMode.Downgrade;
+    }
+
+    private void SpoofPicker_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SpoofPicker.SelectedItem is ComboBoxItem item && Enum.TryParse(item.Tag?.ToString(), out SpoofProfile profile))
+            currentSpoof = profile;
+        if (ready) UpdateState();
     }
 
     private void SetNotice(string title, string message, InfoBarSeverity severity)
@@ -408,11 +435,39 @@ public sealed partial class MainWindow : Window
                 return;
             }
 
-            string confirmation = mode == RunMode.Force
-                ? $"将把 ProductName、EditionID 和 CompositionEditionID 改写为目标版本：{edition.Name}（{edition.EditionId}），然后启动安装程序。\n\n此方法不受微软支持。注册表修改不会自动恢复；安装取消或失败时修改仍会保留。请先备份系统和重要数据并准备恢复介质。"
-                : $"安装源：{source}\n目标：{(mode == RunMode.Normal ? "由安装程序判断" : edition.Name)}\n\n将启动 Windows 安装程序，请在安装程序内核对保留个人文件和应用的选项。";
-            var dialog = CreateDialog(mode == RunMode.Force ? "确认强制升级" : "启动 Windows 安装程序？",
-                new TextBlock { Text = confirmation, TextWrapping = TextWrapping.Wrap }, mode == RunMode.Force ? "确认修改并启动" : "启动安装程序");
+            string confirmation;
+            string dialogTitle;
+            string primaryText;
+            var spoof = currentSpoof;
+            if (mode == RunMode.Downgrade)
+            {
+                string spoofName = spoof == SpoofProfile.Win7
+                    ? "Windows 7 SP1（Build 7601）"
+                    : $"Windows 10 22H2（Build 19045，{edition.Name}）";
+                string extraRisk = spoof == SpoofProfile.Win7
+                    ? "伪装成 Windows 7 比伪装 Windows 10 更激进，依赖系统版本的组件更容易出问题。\n"
+                    : "";
+                confirmation = $"实验性功能，未经测试，可能失败，甚至导致系统无法正常启动。\n\n" +
+                    $"将先把系统版本注册表伪装成 {spoofName}，再启动所选介质中的 Windows 安装程序，尝试就地降级。\n\n" +
+                    $"风险提示：{extraRisk}安装程序可能仍拒绝降级；注册表修改不会自动恢复；降级后部分应用和驱动可能不兼容；可能丢失数据。\n" +
+                    $"请先做完整系统备份并准备恢复介质，建议先在虚拟机中测试。";
+                dialogTitle = "确认实验性降级（风险自负）";
+                primaryText = "我已备份，继续";
+            }
+            else if (mode == RunMode.Force)
+            {
+                confirmation = $"将把 ProductName、EditionID 和 CompositionEditionID 改写为目标版本：{edition.Name}（{edition.EditionId}），然后启动安装程序。\n\n此方法不受微软支持。注册表修改不会自动恢复；安装取消或失败时修改仍会保留。请先备份系统和重要数据并准备恢复介质。";
+                dialogTitle = "确认强制升级";
+                primaryText = "确认修改并启动";
+            }
+            else
+            {
+                confirmation = $"安装源：{source}\n目标：{(mode == RunMode.Normal ? "由安装程序判断" : edition.Name)}\n\n将启动 Windows 安装程序，请在安装程序内核对保留个人文件和应用的选项。";
+                dialogTitle = "启动 Windows 安装程序？";
+                primaryText = "启动安装程序";
+            }
+            var dialog = CreateDialog(dialogTitle,
+                new TextBlock { Text = confirmation, TextWrapping = TextWrapping.Wrap }, primaryText);
             if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary) return;
             if (!UpgradeServices.IsMediaRoot(source)) throw new InvalidOperationException("安装源已不可用，请重新选择。");
             StatusText.Text = "正在启动安装程序…";
@@ -420,6 +475,15 @@ public sealed partial class MainWindow : Window
             {
                 UpgradeServices.WriteEditionRegistry(edition);
                 Log("已修改系统版本注册表：" + edition.EditionId + " / " + edition.ProductName);
+            }
+            else if (mode == RunMode.Downgrade)
+            {
+                string backup = await UpgradeServices.BackupVersionRegistryAsync();
+                Log("已备份系统版本注册表：" + backup);
+                UpgradeServices.WriteVersionSpoofRegistry(edition, spoof);
+                Log(spoof == SpoofProfile.Win7
+                    ? "已将系统版本伪装为 Windows 7 SP1（6.1.7601）。"
+                    : "已将系统版本伪装为 Windows 10 22H2（19045）：" + edition.EditionId + " / " + edition.ProductName);
             }
             string arguments = mode == RunMode.Normal ? Data.ArgsNormal : Data.ArgsForce + edition.Key;
             Log("启动安装程序：" + Path.Combine(source, "setup.exe"));
@@ -516,6 +580,7 @@ public sealed partial class MainWindow : Window
             VirtualKey.S => RunMode.Normal,
             VirtualKey.U => RunMode.Pkey,
             VirtualKey.F => RunMode.Force,
+            VirtualKey.D => RunMode.Downgrade,
             _ => null
         };
         if (step == 2 && mode.HasValue)

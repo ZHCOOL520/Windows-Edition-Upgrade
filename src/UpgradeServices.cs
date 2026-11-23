@@ -362,4 +362,71 @@ internal static class UpgradeServices
         }
         if (written == 0) throw new InvalidOperationException("未找到可写的系统版本注册表键，未写入任何版本信息。");
     }
+
+    public static async Task<string> BackupVersionRegistryAsync()
+    {
+        string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "无损跨版本升级Windows");
+        Directory.CreateDirectory(folder);
+        string file = Path.Combine(folder, $"版本注册表备份-{DateTime.Now:yyyyMMdd-HHmmss}.reg");
+        ProcessStartInfo start = CreateRedirectedStart(SystemFile("reg.exe"), Encoding.Unicode);
+        start.ArgumentList.Add("export");
+        start.ArgumentList.Add(@"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+        start.ArgumentList.Add(file);
+        start.ArgumentList.Add("/y");
+        ProcessResult result = await RunProcessAsync(start, TimeSpan.FromSeconds(30), "导出系统版本注册表");
+        if (result.ExitCode != 0 || !File.Exists(file))
+            throw new InvalidOperationException($"备份系统版本注册表失败（退出代码 {result.ExitCode}）：{result.Output}");
+        return file;
+    }
+
+    public static void WriteVersionSpoofRegistry(Edition edition, SpoofProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(edition);
+        (string Name, string Value)[] values = profile == SpoofProfile.Win7
+            ? new[]
+            {
+                ("EditionID", "Professional"),
+                ("ProductName", "Windows 7 Professional"),
+                ("CompositionEditionID", "Professional"),
+                ("CurrentVersion", "6.1"),
+                ("CurrentBuild", "7601"),
+                ("CurrentBuildNumber", "7601"),
+                ("CSDVersion", "Service Pack 1"),
+                ("DisplayVersion", "SP1"),
+                ("ReleaseId", "6.1")
+            }
+            : new[]
+            {
+                ("EditionID", edition.EditionId),
+                ("ProductName", edition.ProductName),
+                ("CompositionEditionID", string.IsNullOrEmpty(edition.Composition) ? edition.EditionId : edition.Composition),
+                ("CurrentVersion", "6.3"),
+                ("CurrentBuild", "19045"),
+                ("CurrentBuildNumber", "19045"),
+                ("CSDVersion", ""),
+                ("DisplayVersion", "22H2"),
+                ("ReleaseId", "2009")
+            };
+        ArgumentException.ThrowIfNullOrWhiteSpace(edition.EditionId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(edition.ProductName);
+        int written = 0;
+        foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+        {
+            try
+            {
+                using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                using RegistryKey key = baseKey.OpenSubKey(VersionPath, writable: true);
+                if (key == null) continue;
+                foreach ((string name, string value) in values)
+                    key.SetValue(name, value, RegistryValueKind.String);
+                written++;
+            }
+            catch (Exception ex) when (IsSettingsError(ex))
+            {
+                throw new InvalidOperationException($"写入伪装版本注册表失败（{view}，已完成 {written} 个视图；可能已有部分字段写入）：{ex.Message}", ex);
+            }
+        }
+        if (written == 0) throw new InvalidOperationException("未找到可写的系统版本注册表键，未写入任何版本信息。");
+    }
 }

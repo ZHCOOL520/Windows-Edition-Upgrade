@@ -95,6 +95,13 @@ namespace UpgradeTool
         KeyOnly,
         Normal,
         Pkey,
-        Force
+        Force,
+        Downgrade
+    }
+
+    internal enum SpoofProfile
+    {
+        Win10,
+        Win7
     }
 }

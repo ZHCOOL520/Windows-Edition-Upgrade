@@ -141,7 +141,17 @@
                                             <StackPanel Spacing="4"><TextBlock Text="强制升级" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                                 <TextBlock Text="改写系统版本注册表后启动安装，需要 EditionID 并再次确认。快捷键 F" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
                                         </RadioButton>
+                                        <RadioButton Tag="Downgrade" AutomationProperties.Name="实验性降级，快捷键 D">
+                                            <StackPanel Spacing="4"><TextBlock Text="实验性降级（伪装旧版本）" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                <TextBlock Text="把系统伪装成旧版 Windows 后启动安装，尝试从 Windows 11 就地降级到 Windows 10。实验性选项，容易出问题、未经测试。快捷键 D" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" /></StackPanel>
+                                        </RadioButton>
                                     </RadioButtons>
+                                    <ComboBox x:Name="SpoofPicker" Header="伪装目标（仅实验性降级使用）" SelectedIndex="0"
+                                              Visibility="Collapsed" SelectionChanged="SpoofPicker_SelectionChanged"
+                                              AutomationProperties.Name="伪装的目标系统版本">
+                                        <ComboBoxItem Content="Windows 10 22H2（Build 19045）" Tag="Win10" />
+                                        <ComboBoxItem Content="Windows 7 SP1（Build 7601）· 更激进，出问题概率更高" Tag="Win7" />
+                                    </ComboBox>
                                     <InfoBar x:Name="ModeHint" IsOpen="True" IsClosable="False" Severity="Informational" />
                                 </StackPanel>
                             </Border>
